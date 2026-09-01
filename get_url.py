@@ -1,10 +1,21 @@
-import json
+import subprocess
 import time
+import json
 import urllib.request
 import websocket
 
 DEBUGGER_URL = "http://127.0.0.1:9222"
 
+# Open Chrome with remote debugging enabled
+subprocess.Popen([
+    "powershell.exe",
+    "-NoProfile",
+    "-Command",
+    r'Start-Process "C:\Program Files\Google\Chrome\Application\chrome.exe" -ArgumentList "--remote-debugging-port=9222","--user-data-dir=C:\Temp","--remote-allow-origins=http://127.0.0.1:9222"'
+])
+
+# Give Chrome a moment to start
+time.sleep(2)
 
 # Get currently open Chrome tabs
 with urllib.request.urlopen(
@@ -12,7 +23,6 @@ with urllib.request.urlopen(
     timeout=5
 ) as response:
     tabs = json.load(response)
-
 
 # Find the first normal webpage tab
 tab = next(
@@ -52,7 +62,7 @@ def command(method, params=None):
             return response
 
 
-# Navigate the existing tab
+# Navigate
 command(
     "Page.navigate",
     {"url": "https://example.com"}
@@ -60,7 +70,7 @@ command(
 
 time.sleep(1)
 
-# Extract DOM
+# Get source
 result = command(
     "Runtime.evaluate",
     {
