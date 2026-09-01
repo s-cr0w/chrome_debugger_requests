@@ -5,12 +5,27 @@ import urllib.request
 import urllib.error
 import websocket
 
+
 DEBUGGER_URL = "http://127.0.0.1:9222"
+
+
+# --------------------------------------------------
+# Ask user for URL
+# --------------------------------------------------
+
+url = input("Enter URL to open: ").strip()
+
+if not url.startswith(("http://", "https://")):
+    raise ValueError("URL must start with http:// or https://")
+
+print(f"\nURL: {url}")
 
 
 # --------------------------------------------------
 # Start Chrome
 # --------------------------------------------------
+
+print("Starting Chrome...")
 
 subprocess.Popen([
     "powershell.exe",
@@ -62,7 +77,9 @@ page_tabs = [
 ]
 
 if not page_tabs:
-    raise RuntimeError("Chrome started, but no webpage tab was found.")
+    raise RuntimeError(
+        "Chrome started, but no webpage tab was found."
+    )
 
 tab = page_tabs[0]
 
@@ -113,15 +130,15 @@ command("Page.enable")
 
 
 # --------------------------------------------------
-# Navigate to example.com
+# Navigate to requested URL
 # --------------------------------------------------
 
-print("Navigating to example.com...")
+print(f"Navigating to {url}...")
 
 command(
     "Page.navigate",
     {
-        "url": "https://example.com"
+        "url": url
     }
 )
 
