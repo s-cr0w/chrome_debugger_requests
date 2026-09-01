@@ -1,79 +1,76 @@
 import json
+import time
 import urllib.request
 import websocket
-
 
 DEBUGGER_URL = "http://127.0.0.1:9222"
 
 
-def get_page_source(url):
-    # Ask Chrome for a new browser tab.
-    request = urllib.request.Request(
-        f"{DEBUGGER_URL}/json/new",
-        data=url.encode(),
-        method="PUT"
-    )
+# Get currently open Chrome tabs
+with urllib.request.urlopen(
+    f"{DEBUGGER_URL}/json",
+    timeout=5
+) as response:
+    tabs = json.load(response)
 
-    with urllib.request.urlopen(request) as response:
-        target = json.load(response)
 
-    websocket_url = target["webSocketDebuggerUrl"]
+# Find the first normal webpage tab
+tab = next(
+    tab for tab in tabs
+    if tab.get("type") == "page"
+)
 
-    # Connect to Chrome's DevTools WebSocket.
-    ws = websocket.create_connection(websocket_url)
+print("Using tab:", tab["url"])
 
-    message_id = 0
+ws = websocket.create_connection(
+    tab["webSocketDebuggerUrl"],
+    timeout=10
+)
 
-    def send(method, params=None):
-        nonlocal message_id
+message_id = 0
 
-        message_id += 1
 
-        message = {
-            "id": message_id,
-            "method": method
-        }
+def command(method, params=None):
+    global message_id
 
-        if params:
-            message["params"] = params
+    message_id += 1
 
-        ws.send(json.dumps(message))
+    message = {
+        "id": message_id,
+        "method": method
+    }
 
-        while True:
-            response = json.loads(ws.recv())
+    if params:
+        message["params"] = params
 
-            if response.get("id") == message_id:
-                return response
+    ws.send(json.dumps(message))
 
-    # Navigate Chrome.
-    send(
-        "Page.navigate",
-        {"url": url}
-    )
-
-    # Wait for the page to finish loading.
     while True:
         response = json.loads(ws.recv())
 
-        if (
-            response.get("method") == "Page.loadEventFired"
-        ):
-            break
-
-    # Get the HTML from Chrome itself.
-    result = send(
-        "Runtime.evaluate",
-        {
-            "expression": "document.documentElement.outerHTML",
-            "returnByValue": True
-        }
-    )
-
-    ws.close()
-
-    return result["result"]["result"]["value"]
+        if response.get("id") == message_id:
+            return response
 
 
-html = get_page_source("https://example.com")
+# Navigate the existing tab
+command(
+    "Page.navigate",
+    {"url": "https://example.com"}
+)
 
-print(html)
+time.sleep(1)
+
+# Extract DOM
+result = command(
+    "Runtime.evaluate",
+    {
+        "expression": "document.documentElement.outerHTML",
+        "returnByValue": True
+    }
+)
+
+source = result["result"]["result"]["value"]
+
+print(source)
+
+ws.close()
