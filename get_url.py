@@ -127,7 +127,7 @@ command(
 
 
 # --------------------------------------------------
-# Wait until the page finishes loading
+# Wait until page finishes loading
 # --------------------------------------------------
 
 print("Waiting for page to load...")
@@ -171,4 +171,14 @@ print(source)
 print("\n============================\n")
 
 
+# --------------------------------------------------
+# Close Chrome
+# --------------------------------------------------
+
+print("Closing Chrome...")
+
+command("Browser.close")
+
 ws.close()
+
+print("Chrome closed.")
