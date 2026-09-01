@@ -2,11 +2,16 @@ import subprocess
 import time
 import json
 import urllib.request
+import urllib.error
 import websocket
 
 DEBUGGER_URL = "http://127.0.0.1:9222"
 
-# Open Chrome with remote debugging enabled
+
+# --------------------------------------------------
+# Start Chrome
+# --------------------------------------------------
+
 subprocess.Popen([
     "powershell.exe",
     "-NoProfile",
@@ -14,23 +19,59 @@ subprocess.Popen([
     r'Start-Process "C:\Program Files\Google\Chrome\Application\chrome.exe" -ArgumentList "--remote-debugging-port=9222","--user-data-dir=C:\Temp","--remote-allow-origins=http://127.0.0.1:9222"'
 ])
 
-# Give Chrome a moment to start
-time.sleep(2)
 
-# Get currently open Chrome tabs
-with urllib.request.urlopen(
-    f"{DEBUGGER_URL}/json",
-    timeout=5
-) as response:
-    tabs = json.load(response)
+# --------------------------------------------------
+# Wait until Chrome's debugger is ready
+# --------------------------------------------------
 
-# Find the first normal webpage tab
-tab = next(
+print("Waiting for Chrome to start...")
+
+max_wait = 30
+start_time = time.time()
+
+while True:
+
+    try:
+        with urllib.request.urlopen(
+            f"{DEBUGGER_URL}/json",
+            timeout=2
+        ) as response:
+
+            tabs = json.load(response)
+
+        print("Chrome debugger is ready.")
+        break
+
+    except (urllib.error.URLError, ConnectionRefusedError):
+
+        if time.time() - start_time > max_wait:
+            raise RuntimeError(
+                "Chrome debugger did not become available within 30 seconds."
+            )
+
+        time.sleep(0.5)
+
+
+# --------------------------------------------------
+# Find a normal Chrome tab
+# --------------------------------------------------
+
+page_tabs = [
     tab for tab in tabs
     if tab.get("type") == "page"
-)
+]
+
+if not page_tabs:
+    raise RuntimeError("Chrome started, but no webpage tab was found.")
+
+tab = page_tabs[0]
 
 print("Using tab:", tab["url"])
+
+
+# --------------------------------------------------
+# Connect to Chrome DevTools
+# --------------------------------------------------
 
 ws = websocket.create_connection(
     tab["webSocketDebuggerUrl"],
@@ -41,6 +82,7 @@ message_id = 0
 
 
 def command(method, params=None):
+
     global message_id
 
     message_id += 1
@@ -56,21 +98,57 @@ def command(method, params=None):
     ws.send(json.dumps(message))
 
     while True:
+
         response = json.loads(ws.recv())
 
         if response.get("id") == message_id:
             return response
 
 
-# Navigate
+# --------------------------------------------------
+# Enable Page events
+# --------------------------------------------------
+
+command("Page.enable")
+
+
+# --------------------------------------------------
+# Navigate to example.com
+# --------------------------------------------------
+
+print("Navigating to example.com...")
+
 command(
     "Page.navigate",
-    {"url": "https://example.com"}
+    {
+        "url": "https://example.com"
+    }
 )
 
-time.sleep(1)
 
-# Get source
+# --------------------------------------------------
+# Wait until the page finishes loading
+# --------------------------------------------------
+
+print("Waiting for page to load...")
+
+page_loaded = False
+
+while not page_loaded:
+
+    response = json.loads(ws.recv())
+
+    if response.get("method") == "Page.loadEventFired":
+        page_loaded = True
+
+
+print("Page loaded.")
+
+
+# --------------------------------------------------
+# Get source code
+# --------------------------------------------------
+
 result = command(
     "Runtime.evaluate",
     {
@@ -81,6 +159,16 @@ result = command(
 
 source = result["result"]["result"]["value"]
 
+
+# --------------------------------------------------
+# Print source
+# --------------------------------------------------
+
+print("\n========== SOURCE ==========\n")
+
 print(source)
+
+print("\n============================\n")
+
 
 ws.close()
